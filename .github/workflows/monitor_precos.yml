@@ -27,6 +27,6 @@ jobs:
         env:
           TOKEN: ${{ secrets.TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
-          INTERVALO: 60
+          
         run: |
-          python monitor_ml.py
+          python -u monitor_ml.py
