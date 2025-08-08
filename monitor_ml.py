@@ -3,77 +3,91 @@ from bs4 import BeautifulSoup
 from telegram import Bot
 import json
 import os
-from dotenv import load_dotenv
+import gspread
+from google.oauth2.service_account import Credentials
 import asyncio
 
 # --- CONFIGURAÇÃO INICIAL ---
+load_dotenv() # Carrega o .env para testes locais
 
-# 1. Carrega as variáveis do arquivo .env (para rodar no seu PC)
-load_dotenv()
-
-# 2. Pega os valores do ambiente usando os NOMES das variáveis
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-INTERVALO = int(os.getenv("INTERVALO", 60)) # Intervalo em segundos
-ARQUIVO_PRODUTOS = "produtos.json"
 
-# 3. Verificação para garantir que as variáveis foram carregadas
-if not TOKEN:
-    raise ValueError("Variável de ambiente 'TOKEN' não encontrada! Verifique seu arquivo .env ou as configurações do Railway.")
-if not CHAT_ID:
-    raise ValueError("Variável de ambiente 'CHAT_ID' não encontrada! Verifique seu arquivo .env ou as configurações do Railway.")
+# Verificação das variáveis de ambiente
+if not TOKEN or not CHAT_ID:
+    raise ValueError("ERRO: Variáveis TOKEN e CHAT_ID são obrigatórias.")
 
-# Inicializa o bot do Telegram
 bot = Bot(token=TOKEN)
 
 # --- FUNÇÕES DO BOT ---
 
-def carregar_produtos():
-    """Lê o arquivo produtos.json e retorna a lista de dicionários."""
+def carregar_produtos_da_planilha():
+    """Lê os produtos diretamente de uma Planilha Google."""
+    print("Acessando a Planilha Google para buscar produtos...")
     try:
-        with open(ARQUIVO_PRODUTOS, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        print(f"ERRO: O arquivo '{ARQUIVO_PRODUTOS}' não foi encontrado.")
-        return [] # Retorna lista vazia para não quebrar o script
-    except json.JSONDecodeError:
-        print(f"ERRO: O arquivo '{ARQUIVO_PRODUTOS}' contém um erro de formatação (JSON inválido).")
+        # Define os 'escopos' - quais partes da API vamos usar
+        SCOPES = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive.file"
+        ]
+
+        # Tenta carregar as credenciais do Secret do GitHub
+        creds_json_str = os.getenv("GSPREAD_CREDENTIALS")
+        if creds_json_str:
+            creds_info = json.loads(creds_json_str)
+            creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
+        else:
+            # Se não estiver no GitHub, tenta carregar do arquivo local para testes
+            print("Secret não encontrado. Tentando carregar 'credentials.json' local...")
+            creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
+
+        gc = gspread.authorize(creds)
+
+        # IMPORTANTE: Altere o nome abaixo para o nome exato da sua planilha!
+        spreadsheet = gc.open("Monitor de Preços Bot")
+        worksheet = spreadsheet.sheet1
+
+        records = worksheet.get_all_records()
+        print(f"Sucesso! {len(records)} produtos encontrados na planilha.")
+
+        # Converte os dados para o formato que o script espera
+        produtos = []
+        for row in records:
+            produtos.append({
+                "nome": row['Nome'],
+                "url": row['URL'],
+                "preco_desejado": float(str(row['Preco_Desejado']).replace(",", "."))
+            })
+        return produtos
+    except Exception as e:
+        print(f"ERRO CRÍTICO ao ler a Planilha Google: {e}")
         return []
 
 def pegar_preco_exato(url):
-    """
-    Busca o preço exato de um produto usando a meta tag 'itemprop="price"'.
-    Este método é muito mais preciso e confiável.
-    Retorna um float com o preço, ou None se não encontrar.
-    """
+    """Busca o preço exato de um produto usando a meta tag 'itemprop="price"'."""
+    # (Esta função continua exatamente igual à versão anterior)
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
     try:
         response = requests.get(url, headers=headers, timeout=15)
-        response.raise_for_status() # Lança um erro para status HTTP 4xx/5xx
+        response.raise_for_status()
     except requests.RequestException as e:
         print(f"ERRO de conexão ao acessar a URL {url}: {e}")
         return None
 
     soup = BeautifulSoup(response.text, "html.parser")
-
-    # A grande descoberta! Buscamos diretamente pela meta tag com o preço.
     meta_tag_preco = soup.select_one('meta[itemprop="price"]')
-
     if not meta_tag_preco:
-        return None # Se não encontrou a tag, produto pode estar indisponível
-
+        return None
     try:
-        # Pega o valor do atributo 'content' da tag e converte para float
-        preco = float(meta_tag_preco['content'])
-        return preco
-    except (KeyError, ValueError, TypeError) as e:
-        print(f"ERRO ao extrair ou converter o preço da meta tag: {e}")
+        return float(meta_tag_preco['content'])
+    except (KeyError, ValueError, TypeError):
         return None
 
 async def enviar_alerta(nome, url, preco):
     """Envia a notificação de preço baixo via Telegram."""
+    # (Esta função continua exatamente igual à versão anterior)
     mensagem = (
         f"📢 *Preço baixou!*\n\n"
         f"**Produto:** {nome}\n"
@@ -83,16 +97,13 @@ async def enviar_alerta(nome, url, preco):
     await bot.send_message(chat_id=CHAT_ID, text=mensagem, parse_mode="Markdown")
 
 async def fazer_verificacao_unica():
-    """
-    Faz UMA ÚNICA passagem de verificação por todos os produtos.
-    Não contém loop infinito.
-    """
+    """Faz UMA ÚNICA passagem de verificação por todos os produtos."""
     print("--- Iniciando verificação de preços ---")
-    produtos = carregar_produtos()
-    
+    produtos = carregar_produtos_da_planilha()
+
     if not produtos:
-        print("Nenhum produto para monitorar. Verifique seu arquivo 'produtos.json'.")
-        return # Encerra a função se não há produtos
+        print("Nenhum produto para monitorar. Verificação encerrada.")
+        return
 
     for produto in produtos:
         print(f"Verificando: {produto['nome']}...")
@@ -106,15 +117,12 @@ async def fazer_verificacao_unica():
             else:
                 print(f"-> Preço acima do desejado (R$ {produto['preco_desejado']:.2f}).")
         else:
-            print("-> Preço não encontrado (produto indisponível ou página diferente).")
-        
-        # Pausa opcional entre as requisições para não sobrecarregar o site
-        await asyncio.sleep(2) 
+            print("-> Preço não encontrado.")
+
+        await asyncio.sleep(2)
 
     print("--- Verificação concluída. O script será encerrado. ---")
 
 # --- INICIALIZAÇÃO DO SCRIPT ---
-
 if __name__ == "__main__":
-    # Executa a função de verificação única e termina
     asyncio.run(fazer_verificacao_unica())
