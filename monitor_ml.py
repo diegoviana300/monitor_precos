@@ -82,38 +82,39 @@ async def enviar_alerta(nome, url, preco):
     )
     await bot.send_message(chat_id=CHAT_ID, text=mensagem, parse_mode="Markdown")
 
-async def monitorar():
-    """Loop principal que orquestra o monitoramento."""
-    while True:
-        print("--- Iniciando nova verificação de preços ---")
-        produtos = carregar_produtos()
-        
-        if not produtos:
-            print("Nenhum produto para monitorar. Verifique seu arquivo 'produtos.json'.")
-        
-        for produto in produtos:
-            print(f"Verificando: {produto['nome']}...")
-            preco_atual = pegar_preco_exato(produto["url"])
+async def fazer_verificacao_unica():
+    """
+    Faz UMA ÚNICA passagem de verificação por todos os produtos.
+    Não contém loop infinito.
+    """
+    print("--- Iniciando verificação de preços ---")
+    produtos = carregar_produtos()
+    
+    if not produtos:
+        print("Nenhum produto para monitorar. Verifique seu arquivo 'produtos.json'.")
+        return # Encerra a função se não há produtos
 
-            if preco_atual is not None:
-                print(f"-> Preço encontrado: R$ {preco_atual:.2f}")
-                if preco_atual <= produto["preco_desejado"]:
-                    print(f"🎉 PREÇO BAIXO DETECTADO! Enviando alerta...")
-                    await enviar_alerta(produto["nome"], produto["url"], preco_atual)
-                else:
-                    print(f"-> Preço acima do desejado (R$ {produto['preco_desejado']:.2f}).")
+    for produto in produtos:
+        print(f"Verificando: {produto['nome']}...")
+        preco_atual = pegar_preco_exato(produto["url"])
+
+        if preco_atual is not None:
+            print(f"-> Preço encontrado: R$ {preco_atual:.2f}")
+            if preco_atual <= produto["preco_desejado"]:
+                print(f"🎉 PREÇO BAIXO DETECTADO! Enviando alerta...")
+                await enviar_alerta(produto["nome"], produto["url"], preco_atual)
             else:
-                print("-> Preço não encontrado (produto indisponível ou página diferente).")
-            
-            await asyncio.sleep(2) # Pequena pausa para não sobrecarregar o site
+                print(f"-> Preço acima do desejado (R$ {produto['preco_desejado']:.2f}).")
+        else:
+            print("-> Preço não encontrado (produto indisponível ou página diferente).")
+        
+        # Pausa opcional entre as requisições para não sobrecarregar o site
+        await asyncio.sleep(2) 
 
-        print(f"--- Verificação concluída. Aguardando {INTERVALO} segundos... ---")
-        await asyncio.sleep(INTERVALO)
+    print("--- Verificação concluída. O script será encerrado. ---")
 
 # --- INICIALIZAÇÃO DO SCRIPT ---
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(monitorar())
-    except KeyboardInterrupt:
-        print("\nBot interrompido pelo usuário. Encerrando...")
+    # Executa a função de verificação única e termina
+    asyncio.run(fazer_verificacao_unica())
