@@ -9,7 +9,7 @@ from google.oauth2.service_account import Credentials
 import asyncio
 
 # --- CONFIGURAÇÃO INICIAL ---
-load_dotenv() # Carrega o .env para testes locais
+load_dotenv()  # Carrega o .env para testes locais
 
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -34,7 +34,7 @@ def carregar_produtos_da_planilha():
 
         creds_json_str = os.getenv("GSPREAD_CREDENTIALS")
         creds = None
-        
+
         if creds_json_str:
             # No GitHub Actions, carrega as credenciais a partir do Secret
             creds_info = json.loads(creds_json_str)
@@ -44,10 +44,12 @@ def carregar_produtos_da_planilha():
             print("Secret GSPREAD_CREDENTIALS não encontrado. Tentando carregar 'credentials.json' local...")
             creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
 
-        # Autoriza o cliente gspread com as credenciais criadas
+        # 🔍 DEBUG: listar todas as planilhas que a conta de serviço pode acessar
         gc = gspread.authorize(creds)
+        print("🔍 Listando planilhas acessíveis pelo bot...")
+        for ss in gc.openall():
+            print(f"Planilha encontrada: {ss.title}")
 
-        # --- ALTERAÇÃO DE DEBUG ---
         # Imprime o nome exato que será usado para abrir a planilha.
         sheet_name_to_open = "Monitor"
         print(f"Tentando abrir a planilha com o nome EXATO: '{sheet_name_to_open}'")
@@ -55,10 +57,10 @@ def carregar_produtos_da_planilha():
         # Abre a planilha usando a variável
         spreadsheet = gc.open(sheet_name_to_open)
         worksheet = spreadsheet.sheet1
-        
+
         records = worksheet.get_all_records()
         print(f"Sucesso! {len(records)} produtos encontrados na planilha.")
-        
+
         produtos = []
         for row in records:
             produtos.append({
@@ -68,7 +70,6 @@ def carregar_produtos_da_planilha():
             })
         return produtos
     except gspread.exceptions.SpreadsheetNotFound:
-        # A mensagem de erro agora usa a variável para ser precisa
         print(f"ERRO CRÍTICO: Planilha '{sheet_name_to_open}' não encontrada. Verifique se o nome está correto e se você compartilhou a planilha com o e-mail do bot.")
         return []
     except Exception as e:
@@ -129,7 +130,7 @@ async def fazer_verificacao_unica():
                 print(f"-> Preço acima do desejado (R$ {produto.get('preco_desejado', 0):.2f}).")
         else:
             print("-> Preço não encontrado.")
-        
+
         await asyncio.sleep(2)
 
     print("--- Verificação concluída. O script será encerrado. ---")
