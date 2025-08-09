@@ -48,7 +48,7 @@ def carregar_produtos_da_planilha():
         gc = gspread.authorize(creds)
 
         # IMPORTANTE: O nome deve ser exatamente igual ao da sua planilha!
-        spreadsheet = gc.open("Monitor de Preços Bot")
+        spreadsheet = gc.open("Monitor_Bot")
         worksheet = spreadsheet.sheet1
         
         records = worksheet.get_all_records()
@@ -131,3 +131,4 @@ async def fazer_verificacao_unica():
 # --- INICIALIZAÇÃO DO SCRIPT ---
 if __name__ == "__main__":
     asyncio.run(fazer_verificacao_unica())
+
