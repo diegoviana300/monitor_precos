@@ -49,7 +49,7 @@ def carregar_produtos_da_planilha():
 
         # --- ALTERAÇÃO DE DEBUG ---
         # Imprime o nome exato que será usado para abrir a planilha.
-        sheet_name_to_open = "Monitor de Preços Bot"
+        sheet_name_to_open = "Monitor"
         print(f"Tentando abrir a planilha com o nome EXATO: '{sheet_name_to_open}'")
 
         # Abre a planilha usando a variável
