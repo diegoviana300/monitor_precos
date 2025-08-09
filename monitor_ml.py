@@ -47,8 +47,13 @@ def carregar_produtos_da_planilha():
         # Autoriza o cliente gspread com as credenciais criadas
         gc = gspread.authorize(creds)
 
-        # IMPORTANTE: O nome deve ser exatamente igual ao da sua planilha!
-        spreadsheet = gc.open("Monitor_Bot")
+        # --- ALTERAÇÃO DE DEBUG ---
+        # Imprime o nome exato que será usado para abrir a planilha.
+        sheet_name_to_open = "Monitor de Preços Bot"
+        print(f"Tentando abrir a planilha com o nome EXATO: '{sheet_name_to_open}'")
+
+        # Abre a planilha usando a variável
+        spreadsheet = gc.open(sheet_name_to_open)
         worksheet = spreadsheet.sheet1
         
         records = worksheet.get_all_records()
@@ -63,7 +68,8 @@ def carregar_produtos_da_planilha():
             })
         return produtos
     except gspread.exceptions.SpreadsheetNotFound:
-        print("ERRO CRÍTICO: Planilha 'Monitor_Bot' não encontrada. Verifique o nome e se você compartilhou a planilha com o e-mail do bot.")
+        # A mensagem de erro agora usa a variável para ser precisa
+        print(f"ERRO CRÍTICO: Planilha '{sheet_name_to_open}' não encontrada. Verifique se o nome está correto e se você compartilhou a planilha com o e-mail do bot.")
         return []
     except Exception as e:
         print(f"ERRO CRÍTICO ao ler a Planilha Google. Tipo do erro: {type(e).__name__}, Detalhes: {e}")
@@ -131,5 +137,3 @@ async def fazer_verificacao_unica():
 # --- INICIALIZAÇÃO DO SCRIPT ---
 if __name__ == "__main__":
     asyncio.run(fazer_verificacao_unica())
-
-
