@@ -1,0 +1,4 @@
+- name: Testar credenciais e acesso ao Google Sheets
+  env:
+    GSPREAD_CREDENTIALS: ${{ secrets.GSPREAD_CREDENTIALS }}
+  run: python teste_gspread.py
