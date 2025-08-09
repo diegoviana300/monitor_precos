@@ -25,10 +25,25 @@ def debug_planilhas_disponiveis():
     """Lista todas as planilhas disponíveis para debug."""
     print("\n=== DEBUG: Listando todas as planilhas disponíveis ===")
     try:
-        SCOPES = [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive.file",
+        # Testando diferentes escopos de permissão
+        SCOPES_TO_TRY = [
+            # Escopo mais amplo (recomendado)
+            [
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive",
+            ],
+            # Escopo original
+            [
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive.file",
+            ],
+            # Escopo mais restritivo
+            [
+                "https://www.googleapis.com/auth/spreadsheets.readonly",
+                "https://www.googleapis.com/auth/drive.readonly",
+            ]
         ]
+        
         creds_json_str = os.getenv("GSPREAD_CREDENTIALS")
         
         if not creds_json_str:
@@ -38,31 +53,45 @@ def debug_planilhas_disponiveis():
         print("✓ Credenciais encontradas")
         creds_info = json.loads(creds_json_str)
         print(f"✓ Email da conta de serviço: {creds_info.get('client_email', 'NÃO ENCONTRADO')}")
+        print(f"✓ Projeto: {creds_info.get('project_id', 'NÃO ENCONTRADO')}")
         
-        creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
-        gc = gspread.authorize(creds)
+        gc = None
+        for i, scopes in enumerate(SCOPES_TO_TRY, 1):
+            print(f"\n--- Tentativa {i}: Testando escopos {scopes} ---")
+            try:
+                creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
+                gc = gspread.authorize(creds)
+                
+                print("✓ Autenticação bem-sucedida!")
+                spreadsheets = gc.openall()
+                
+                if spreadsheets:
+                    print(f"✓ Encontradas {len(spreadsheets)} planilhas com estes escopos:")
+                    for j, sheet in enumerate(spreadsheets, 1):
+                        print(f"  {j}. Nome: '{sheet.title}' | ID: {sheet.id}")
+                    return gc
+                else:
+                    print("❌ Nenhuma planilha encontrada com estes escopos")
+                    
+            except Exception as e:
+                print(f"❌ Erro com escopos {i}: {type(e).__name__}: {e}")
+                continue
         
-        print("\n--- Listando todas as planilhas compartilhadas com esta conta ---")
-        spreadsheets = gc.openall()
+        # Se chegou aqui, nenhum escopo funcionou
+        print("\n❌ NENHUMA planilha encontrada com nenhum escopo!")
         
-        if not spreadsheets:
-            print("❌ NENHUMA planilha encontrada!")
-            print("\n🔧 SOLUÇÕES:")
-            print("1. Verifique se você compartilhou a planilha com o email da conta de serviço")
-            print("2. Certifique-se de que deu permissão de 'Editor' para a conta")
-            return None
+        # Vamos tentar buscar por ID específico se fornecido
+        print("\n--- Tentativa alternativa: Buscar por URL/ID ---")
+        print("💡 DICA: Se você souber o ID da planilha, podemos tentar acessá-la diretamente")
+        print("   O ID está na URL: https://docs.google.com/spreadsheets/d/[ID_AQUI]/edit")
         
-        print(f"✓ Encontradas {len(spreadsheets)} planilhas:")
-        for i, sheet in enumerate(spreadsheets, 1):
-            print(f"  {i}. Nome: '{sheet.title}' | ID: {sheet.id}")
-            
-        return gc
+        return None
         
     except json.JSONDecodeError:
         print("❌ ERRO: GSPREAD_CREDENTIALS não é um JSON válido!")
         return None
     except Exception as e:
-        print(f"❌ ERRO ao listar planilhas: {type(e).__name__}: {e}")
+        print(f"❌ ERRO geral ao listar planilhas: {type(e).__name__}: {e}")
         return None
 
 def carregar_produtos_da_planilha():
@@ -72,9 +101,80 @@ def carregar_produtos_da_planilha():
     # Primeiro, vamos fazer debug das planilhas disponíveis
     gc = debug_planilhas_disponiveis()
     if not gc:
+        # Vamos tentar uma abordagem alternativa: buscar por ID
+        print("\n=== TENTATIVA ALTERNATIVA: Acesso direto por ID ===")
+        print("💡 Vamos tentar diferentes métodos de acesso...")
+        
+        try:
+            SCOPES = [
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive",
+            ]
+            creds_json_str = os.getenv("GSPREAD_CREDENTIALS")
+            creds_info = json.loads(creds_json_str)
+            creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
+            gc = gspread.authorize(creds)
+            
+            # Tentar listar arquivos do Drive diretamente
+            print("\n--- Tentando listar via Google Drive API ---")
+            
+            # Se não conseguimos listar, vamos tentar um método mais direto
+            print("🔍 Buscando planilhas com diferentes filtros...")
+            
+            # Método alternativo: tentar abrir por diferentes nomes
+            possible_names = ["Monitor", "monitor", "MONITOR", "Monitor de Preços", "Monitor de Precos"]
+            
+            for name in possible_names:
+                try:
+                    print(f"  Tentando nome: '{name}'")
+                    spreadsheet = gc.open(name)
+                    print(f"  ✓ SUCESSO! Planilha encontrada: '{name}'")
+                    print(f"  📋 ID: {spreadsheet.id}")
+                    print(f"  🔗 URL: {spreadsheet.url}")
+                    
+                    worksheet = spreadsheet.sheet1
+                    records = worksheet.get_all_records()
+                    print(f"  📊 {len(records)} linhas encontradas")
+                    
+                    # Processar produtos...
+                    produtos = []
+                    for i, row in enumerate(records, 1):
+                        try:
+                            nome = row.get('Nome', '').strip()
+                            url = row.get('URL', '').strip()
+                            preco_str = str(row.get('Preco_Desejado', '0')).replace(",", ".").strip()
+                            
+                            if not nome or not url:
+                                continue
+                                
+                            preco_desejado = float(preco_str)
+                            produtos.append({
+                                "nome": nome,
+                                "url": url,
+                                "preco_desejado": preco_desejado
+                            })
+                            
+                        except Exception:
+                            continue
+                    
+                    print(f"  ✅ {len(produtos)} produtos válidos carregados!")
+                    return produtos
+                    
+                except gspread.exceptions.SpreadsheetNotFound:
+                    print(f"  ❌ '{name}' não encontrada")
+                    continue
+                except Exception as e:
+                    print(f"  ❌ Erro com '{name}': {e}")
+                    continue
+            
+            print("\n❌ Nenhuma planilha encontrada com os nomes testados")
+            
+        except Exception as e:
+            print(f"❌ Erro na tentativa alternativa: {e}")
+        
         return []
     
-    # Agora vamos tentar encontrar a planilha "Monitor"
+    # Se gc existe, continuar com o processo normal...
     sheet_names_to_try = ["Monitor", "monitor", "MONITOR"]
     
     for sheet_name in sheet_names_to_try:
@@ -134,12 +234,12 @@ def carregar_produtos_da_planilha():
             print(f"❌ Erro ao acessar planilha '{sheet_name}': {type(e).__name__}: {e}")
             continue
     
-    print("\n❌ NENHUMA planilha 'Monitor' encontrada com nenhuma das variações testadas!")
-    print("\n🔧 SOLUÇÕES:")
-    print("1. Verifique se o nome da planilha é exatamente 'Monitor'")
-    print("2. Certifique-se de que compartilhou a planilha com o email da conta de serviço")
-    print("3. Verifique se as permissões são de 'Editor'")
-    print("4. Tente renomear uma das planilhas listadas acima para 'Monitor'")
+    print("\n❌ NENHUMA planilha 'Monitor' encontrada!")
+    print("\n🔧 PRÓXIMOS PASSOS:")
+    print("1. Aguarde 5-10 minutos e tente novamente (sincronização do Google)")
+    print("2. Verifique se o nome da planilha é exatamente 'Monitor'")
+    print("3. Tente remover e re-adicionar as permissões")
+    print("4. Se possível, copie o ID da planilha da URL para tentarmos acesso direto")
     
     return []
 
