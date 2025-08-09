@@ -22,55 +22,62 @@ bot = Bot(token=TOKEN)
 # --- FUNÇÕES DO BOT ---
 
 def carregar_produtos_da_planilha():
-    """Lê os produtos da Planilha Google com autenticação explícita."""
-    print("Acessando a Planilha Google...")
+    """Lê os produtos da Planilha Google com debug melhorado."""
+    print("\n=== Iniciando acesso à Planilha Google ===")
+    
     try:
         SCOPES = [
             "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive.file",
+            "https://www.googleapis.com/auth/drive",
         ]
         creds_json_str = os.getenv("GSPREAD_CREDENTIALS")
-        creds = None
         
-        if creds_json_str:
-            creds_info = json.loads(creds_json_str)
-            creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
-        else:
-            print("Secret não encontrado. Tentando carregar 'credentials.json' local...")
-            creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
-
+        if not creds_json_str:
+            print("ERRO: GSPREAD_CREDENTIALS não encontrado!")
+            return []
+            
+        creds_info = json.loads(creds_json_str)
+        creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
         gc = gspread.authorize(creds)
         
+        print("✓ Autenticação bem-sucedida!")
+        
         sheet_name_to_open = "Monitor"
-        print(f"Tentando abrir a planilha: '{sheet_name_to_open}'")
+        print(f"--- Tentando abrir planilha: '{sheet_name_to_open}' ---")
         spreadsheet = gc.open(sheet_name_to_open)
         worksheet = spreadsheet.sheet1
         
+        print(f"✓ Planilha '{sheet_name_to_open}' encontrada!")
+        
         records = worksheet.get_all_records()
-        print(f"Sucesso! {len(records)} produtos encontrados.")
+        print(f"✓ Dados carregados: {len(records)} linhas encontradas")
         
         produtos = []
         for row in records:
+            # Limpa espaços em branco da URL logo na leitura
+            url_limpa = row.get('URL', '').strip()
+            
             produtos.append({
-                "nome": row.get('Nome'),
-                "url": row.get('URL'),
-                "preco_desejado": float(str(row.get('Preco_Desejado', 0)).replace(",", "."))
+                "nome": row.get('Nome', '').strip(),
+                "url": url_limpa,
+                "preco_desejado": float(str(row.get('Preco_Desejado', '0')).replace(",", ".").strip())
             })
+        
+        print(f"✓ Total de produtos válidos carregados: {len(produtos)}")
         return produtos
+        
     except gspread.exceptions.SpreadsheetNotFound:
-        print(f"ERRO CRÍTICO: Planilha '{sheet_name_to_open}' não encontrada. Verifique o nome e o compartilhamento.")
+        print(f"❌ Planilha '{sheet_name_to_open}' não encontrada")
         return []
     except Exception as e:
-        print(f"ERRO CRÍTICO ao ler a Planilha Google: {type(e).__name__}, Detalhes: {e}")
+        print(f"❌ Erro ao acessar planilha: {type(e).__name__}: {e}")
         return []
 
 def pegar_preco_exato(url):
-    """Extrai o preço do Mercado Livre com múltiplas estratégias."""
-    if not url or not url.strip():
+    """Extrai o preço do Mercado Livre com tratamento robusto."""
+    if not url:
         return None
         
-    print(f"  🔍 Buscando preço em: {url[:80]}...")
-    
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
@@ -80,35 +87,29 @@ def pegar_preco_exato(url):
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
         
-        # Estratégia 1: A meta tag
-        meta_tag = soup.select_one('meta[itemprop="price"]')
-        if meta_tag and meta_tag.get('content'):
-            print(f'  ✓ Preço encontrado com Estratégia 1 (meta tag)')
-            return float(meta_tag['content'])
-
-        # Estratégia 2: O container principal
-        price_container = soup.select_one(".ui-pdp-price__main-container")
-        if price_container:
-            fraction = price_container.select_one(".andes-money-amount__fraction")
-            cents = price_container.select_one(".andes-money-amount__cents")
-            if fraction:
-                price_str = fraction.text.replace('.', '')
-                if cents and cents.text: price_str += f".{cents.text}"
-                print(f'  ✓ Preço encontrado com Estratégia 2 (container)')
-                return float(price_str)
-
-        # Estratégia 3: Seletor genérico
-        fraction = soup.select_one(".price-tag-fraction, .andes-money-amount__fraction")
-        if fraction:
-             print(f'  ✓ Preço encontrado com Estratégia 3 (genérico)')
-             return float(fraction.text.replace('.', '').replace(',', '.'))
-
+        selectors = [
+            'meta[itemprop="price"]',
+            '.andes-money-amount__fraction',
+            '.price-tag-fraction'
+        ]
+        
+        for selector in selectors:
+            element = soup.select_one(selector)
+            if element:
+                price_text = ''
+                if element.name == 'meta' and element.get('content'):
+                    price_text = element['content']
+                else:
+                    price_text = element.get_text()
+                
+                price_clean = ''.join(filter(lambda x: x.isdigit() or x == '.', price_text.replace(',', '.')))
+                if price_clean:
+                    print(f"  ✓ Preço encontrado: R$ {float(price_clean):,.2f} (usando {selector})")
+                    return float(price_clean)
+        
         print(f"  ❌ Preço não encontrado para {url[:50]}...")
         return None
         
-    except requests.RequestException as e:
-        print(f"  ❌ Erro de rede ao buscar {url[:50]}...: {e}")
-        return None
     except Exception as e:
         print(f"  ❌ Erro inesperado ao buscar preço: {type(e).__name__}: {e}")
         return None
@@ -149,14 +150,13 @@ async def fazer_verificacao_unica():
         
         print(f"\n[{i}/{len(produtos)}] 🛍️ {nome}")
         
-        # --- INÍCIO DO CÓDIGO DE DEBUG ---
+        # --- INÍCIO DO CÓDIGO DE DEBUG DA URL ---
         print("--- DEBUG DA URL ---")
-        # Imprime a URL entre aspas para ver espaços em branco
-        print(f"URL lida: '{url}'")
-        # Imprime o comprimento da string. Se for diferente do esperado, há algo errado.
+        # repr() mostra caracteres invisíveis como \n ou \t
+        print(f"URL lida (repr): {repr(url)}")
         print(f"Comprimento da URL: {len(url)}")
-        # Imprime a representação em bytes para ver caracteres invisíveis
-        print(f"URL em bytes: {url.encode('utf-8')}")
+        # Marcadores para ver espaços no início ou fim
+        print(f"URL entre marcadores: >{url}<")
         print("--- FIM DO DEBUG ---")
         # --- FIM DO CÓDIGO DE DEBUG ---
         
@@ -173,7 +173,8 @@ async def fazer_verificacao_unica():
         else:
             print(f"  ⚠️  Não foi possível obter o preço")
         
-        if i < len(produtos): await asyncio.sleep(3)
+        if i < len(produtos):
+            await asyncio.sleep(3)
     
     print(f"\n" + "="*50)
     print(f"✅ VERIFICAÇÃO CONCLUÍDA!")
