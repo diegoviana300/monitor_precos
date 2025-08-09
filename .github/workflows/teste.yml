@@ -1,4 +1,26 @@
-- name: Testar credenciais e acesso ao Google Sheets
-  env:
-    GSPREAD_CREDENTIALS: ${{ secrets.GSPREAD_CREDENTIALS }}
-  run: python teste_gspread.py
+name: Testar Google Sheets
+
+on:
+  workflow_dispatch: # permite rodar manualmente no GitHub
+
+jobs:
+  teste:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar código do repositório
+        uses: actions/checkout@v3
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Instalar dependências
+        run: |
+          pip install gspread
+
+      - name: Rodar teste de credenciais
+        env:
+          GSPREAD_CREDENTIALS: ${{ secrets.GSPREAD_CREDENTIALS }}
+        run: python teste_gspread.py
