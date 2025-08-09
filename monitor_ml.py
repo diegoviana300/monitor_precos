@@ -63,7 +63,7 @@ def carregar_produtos_da_planilha():
             })
         return produtos
     except gspread.exceptions.SpreadsheetNotFound:
-        print("ERRO CRÍTICO: Planilha 'Monitor de Preços Bot' não encontrada. Verifique o nome e se você compartilhou a planilha com o e-mail do bot.")
+        print("ERRO CRÍTICO: Planilha 'Monitor_Bot' não encontrada. Verifique o nome e se você compartilhou a planilha com o e-mail do bot.")
         return []
     except Exception as e:
         print(f"ERRO CRÍTICO ao ler a Planilha Google. Tipo do erro: {type(e).__name__}, Detalhes: {e}")
@@ -131,4 +131,5 @@ async def fazer_verificacao_unica():
 # --- INICIALIZAÇÃO DO SCRIPT ---
 if __name__ == "__main__":
     asyncio.run(fazer_verificacao_unica())
+
 
