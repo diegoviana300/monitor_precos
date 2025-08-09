@@ -25,16 +25,23 @@ def carregar_produtos_da_planilha():
     """Lê os produtos diretamente de uma Planilha Google usando o método recomendado."""
     print("Acessando a Planilha Google para buscar produtos...")
     try:
+        # Define os 'escopos' - quais partes da API vamos usar. É uma boa prática ser explícito.
+        SCOPES = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive.file"
+        ]
+        
         creds_json_str = os.getenv("GSPREAD_CREDENTIALS")
         
         if creds_json_str:
             # No GitHub Actions, carrega as credenciais a partir do Secret
             creds_info = json.loads(creds_json_str)
-            gc = gspread.service_account_from_dict(creds_info)
+            # Adicionando os escopos explicitamente
+            gc = gspread.service_account_from_dict(creds_info, scopes=SCOPES)
         else:
             # Para testes locais, carrega a partir do arquivo
             print("Secret GSPREAD_CREDENTIALS não encontrado. Tentando carregar 'credentials.json' local...")
-            gc = gspread.service_account(filename="credentials.json")
+            gc = gspread.service_account(filename="credentials.json", scopes=SCOPES)
 
         # IMPORTANTE: O nome deve ser exatamente igual ao da sua planilha!
         spreadsheet = gc.open("Monitor de Preços Bot")
@@ -57,7 +64,8 @@ def carregar_produtos_da_planilha():
         print("ERRO CRÍTICO: Planilha 'Monitor de Preços Bot' não encontrada. Verifique o nome e se você compartilhou a planilha com o e-mail do bot.")
         return []
     except Exception as e:
-        print(f"ERRO CRÍTICO ao ler a Planilha Google: {e}")
+        # Log de erro mais detalhado
+        print(f"ERRO CRÍTICO ao ler a Planilha Google. Tipo do erro: {type(e).__name__}, Detalhes: {e}")
         return []
 
 def pegar_preco_exato(url):
@@ -121,6 +129,4 @@ async def fazer_verificacao_unica():
 
 # --- INICIALIZAÇÃO DO SCRIPT ---
 if __name__ == "__main__":
-    # Remove a importação desnecessária de 'Credentials'
-    from dotenv import load_dotenv
     asyncio.run(fazer_verificacao_unica())
