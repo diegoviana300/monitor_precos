@@ -5,6 +5,7 @@ import json
 import os
 import gspread
 from dotenv import load_dotenv
+from google.oauth2.service_account import Credentials
 import asyncio
 
 # --- CONFIGURAÇÃO INICIAL ---
@@ -22,26 +23,29 @@ bot = Bot(token=TOKEN)
 # --- FUNÇÕES DO BOT ---
 
 def carregar_produtos_da_planilha():
-    """Lê os produtos diretamente de uma Planilha Google usando o método recomendado."""
+    """Lê os produtos diretamente de uma Planilha Google com autenticação explícita."""
     print("Acessando a Planilha Google para buscar produtos...")
     try:
-        # Define os 'escopos' - quais partes da API vamos usar. É uma boa prática ser explícito.
+        # Define os 'escopos' - quais partes da API vamos usar.
         SCOPES = [
             "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive.file"
+            "https://www.googleapis.com/auth/drive.file",
         ]
-        
+
         creds_json_str = os.getenv("GSPREAD_CREDENTIALS")
+        creds = None
         
         if creds_json_str:
             # No GitHub Actions, carrega as credenciais a partir do Secret
             creds_info = json.loads(creds_json_str)
-            # Adicionando os escopos explicitamente
-            gc = gspread.service_account_from_dict(creds_info, scopes=SCOPES)
+            creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
         else:
             # Para testes locais, carrega a partir do arquivo
             print("Secret GSPREAD_CREDENTIALS não encontrado. Tentando carregar 'credentials.json' local...")
-            gc = gspread.service_account(filename="credentials.json", scopes=SCOPES)
+            creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
+
+        # Autoriza o cliente gspread com as credenciais criadas
+        gc = gspread.authorize(creds)
 
         # IMPORTANTE: O nome deve ser exatamente igual ao da sua planilha!
         spreadsheet = gc.open("Monitor de Preços Bot")
@@ -50,10 +54,8 @@ def carregar_produtos_da_planilha():
         records = worksheet.get_all_records()
         print(f"Sucesso! {len(records)} produtos encontrados na planilha.")
         
-        # Converte os dados para o formato que o script espera
         produtos = []
         for row in records:
-            # Garante que os valores sejam lidos corretamente
             produtos.append({
                 "nome": row.get('Nome'),
                 "url": row.get('URL'),
@@ -64,13 +66,12 @@ def carregar_produtos_da_planilha():
         print("ERRO CRÍTICO: Planilha 'Monitor de Preços Bot' não encontrada. Verifique o nome e se você compartilhou a planilha com o e-mail do bot.")
         return []
     except Exception as e:
-        # Log de erro mais detalhado
         print(f"ERRO CRÍTICO ao ler a Planilha Google. Tipo do erro: {type(e).__name__}, Detalhes: {e}")
         return []
 
 def pegar_preco_exato(url):
     """Busca o preço exato de um produto usando a meta tag 'itemprop="price"'."""
-    if not url: return None # Adiciona verificação para URL vazia
+    if not url: return None
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
