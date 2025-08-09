@@ -1,4 +1,4 @@
-name: Executar Monitor de Preços
+name: Monitor de Preços
 
 on:
   schedule:
