@@ -6,6 +6,7 @@ import os
 import gspread
 from google.oauth2.service_account import Credentials
 import asyncio
+from dotenv import load_dotenv
 
 # --- CONFIGURAÇÃO INICIAL ---
 load_dotenv() # Carrega o .env para testes locais
@@ -126,3 +127,4 @@ async def fazer_verificacao_unica():
 # --- INICIALIZAÇÃO DO SCRIPT ---
 if __name__ == "__main__":
     asyncio.run(fazer_verificacao_unica())
+
